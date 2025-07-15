@@ -10,42 +10,65 @@ import {
   TableRow,
   TextField,
   CircularProgress,
-  TableSortLabel
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
 } from '@mui/material';
 import axios from 'axios';
 
 export default function ManagePoints() {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [data, setData]             = useState([]);
+  const [loading, setLoading]       = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortOrder, setSortOrder] = useState(null); 
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const res = await axios.get('http://localhost:3001/api/data');
-      setData(res.data);
+      const sorted = res.data.sort((a, b) => {
+        const da = new Date(a.incident_date);
+        const db = new Date(b.incident_date);
+        return db - da;
+      });
+
+      setData(sorted);
     } catch (error) {
       console.error('Error fetching points:', error);
     } finally {
       setLoading(false);
     }
   };
+  useEffect(() => { fetchData(); }, []);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const confirmDelete = (id) => {
+    setPendingDeleteId(id);
+    setDialogOpen(true);
+  };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async () => {
+    const id = pendingDeleteId;
+    setDialogOpen(false);
+    if (id == null) return;
     try {
       await axios.delete(`http://localhost:3001/api/points/${id}`);
       fetchData();
     } catch (error) {
       console.error('Error deleting point:', error);
+    } finally {
+      setPendingDeleteId(null);
     }
   };
 
-  const filteredData = data.filter((row) => {
+  const handleCancel = () => {
+    setDialogOpen(false);
+    setPendingDeleteId(null);
+  };
+
+  const filtered = data.filter(row => {
     const term = searchTerm.toLowerCase();
     return (
       row.id.toString().includes(term) ||
@@ -53,25 +76,9 @@ export default function ManagePoints() {
       row.last_name.toLowerCase().includes(term) ||
       row.city.toLowerCase().includes(term) ||
       row.state.toLowerCase().includes(term) ||
-      row.incident_date.includes(term)
+      row.incident_date.includes(term)   
     );
   });
-
-  const sortedData = sortOrder
-    ? [...filteredData].sort((a, b) => {
-        const da = new Date(a.incident_date);
-        const db = new Date(b.incident_date);
-        return sortOrder === 'asc'
-          ? da - db
-          : db - da;
-      })
-    : filteredData;
-
-  const handleSortClick = () => {
-    setSortOrder((prev) =>
-      prev === 'asc' ? 'desc' : prev === 'desc' ? null : 'asc'
-    );
-  };
 
   if (loading) {
     return (
@@ -104,33 +111,16 @@ export default function ManagePoints() {
           onChange={(e) => setSearchTerm(e.target.value)}
         />
       </Box>
-
       <Table>
         <TableHead>
           <TableRow>
-            {['ID', 'First', 'Last'].map((h) => (
-              <TableCell key={h}>{h}</TableCell>
-            ))}
-
-            {/* Date header with sortable label */}
-            <TableCell sortDirection={sortOrder || false}>
-              <TableSortLabel
-                active={!!sortOrder}
-                direction={sortOrder || 'asc'}
-                onClick={handleSortClick}
-              >
-                Date
-              </TableSortLabel>
-            </TableCell>
-
-            {['City', 'State', 'Actions'].map((h) => (
+            {['ID', 'First', 'Last', 'Date', 'City', 'State', 'Actions'].map(h => (
               <TableCell key={h}>{h}</TableCell>
             ))}
           </TableRow>
         </TableHead>
-
         <TableBody>
-          {sortedData.map((row) => (
+          {filtered.map(row => (
             <TableRow key={row.id}>
               <TableCell>{row.id}</TableCell>
               <TableCell>{row.first_name}</TableCell>
@@ -142,15 +132,14 @@ export default function ManagePoints() {
                 <Button
                   size="small"
                   color="error"
-                  onClick={() => handleDelete(row.id)}
+                  onClick={() => confirmDelete(row.id)}
                 >
                   Delete
                 </Button>
               </TableCell>
             </TableRow>
           ))}
-
-          {sortedData.length === 0 && (
+          {filtered.length === 0 && (
             <TableRow>
               <TableCell colSpan={7} align="center">
                 No matching records
@@ -159,6 +148,24 @@ export default function ManagePoints() {
           )}
         </TableBody>
       </Table>
+      <Dialog
+        open={dialogOpen}
+        onClose={handleCancel}
+      >
+        <DialogTitle>Confirm Deletion</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete point&nbsp;
+            <strong>ID #{pendingDeleteId}</strong>?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancel}>Cancel</Button>
+          <Button color="error" onClick={handleDelete}>
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

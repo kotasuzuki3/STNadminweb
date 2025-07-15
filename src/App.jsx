@@ -7,7 +7,7 @@ import ManagePoints  from './pages/ManagePoints';
 export default function App() {
   return (
     <>
-      <AppBar position="static">
+      <AppBar position="sticky">
         <Toolbar>
           {['Bulk Upload','Add Point','Manage Points'].map((label,idx)=>(
             <Button key={idx} component={Link} to={['/','/add','/manage'][idx]} color="inherit">

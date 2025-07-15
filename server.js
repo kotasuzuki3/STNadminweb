@@ -10,11 +10,9 @@ const upload = multer();
 const app = express();
 const port = process.env.PORT || 3001;
 
-// middleware
 app.use(cors());
 app.use(bodyParser.json());
 
-// Postgres client
 const client = new Client({
   user:     'dbstn',   
   host:     'stn-kota.cqlkymqmgfch.us-east-1.rds.amazonaws.com',
@@ -28,36 +26,32 @@ client.connect()
   .then(() => console.log('Connected to PostgreSQL database'))
   .catch(err => console.error('Error connecting to PostgreSQL database', err));
 
-// helper to upsert one point into the 4 tables
-async function upsertPoint({
-  id, first_name, last_name, age, gender,
-  incident_date, city, state, latitude, longitude,
-  url = 'https://saytheirnames.shinyapps.io/STNWebApp/_w_4d2adf62/0000.jpg',
-  bio_info = 'Biographical information is not available at this time. Please contact STN@nonopera.org if you have information you would like to share.'
-}) {
-  await client.query('BEGIN');
-  try {
-    // 1) victims
-    await client.query(`
-      INSERT INTO public.victims(
-        victim_id, first_name, last_name, age, gender, bio_info
-      ) VALUES($1,$2,$3,$4,$5,$6)
-      ON CONFLICT(victim_id) DO UPDATE
-        SET first_name=EXCLUDED.first_name,
-            last_name =EXCLUDED.last_name,
-            age       =EXCLUDED.age,
-            gender    =EXCLUDED.gender,
-            bio_info  =EXCLUDED.bio_info;
-    `, [
-      id,
-      first_name,
-      last_name,
-      age,
-      gender,
-      bio_info   
-    ]);
+  const DEFAULT_URL = 'https://saytheirnames.shinyapps.io/STNWebApp/_w_4d2adf62/0000.jpg';
+  const DEFAULT_BIO = 'Biographical information is not available at this time. Please contact STN@nonopera.org if you have information you would like to share.';
+  
+  async function upsertPoint({
+    id, first_name, last_name, age, gender,
+    incident_date, city, state, latitude, longitude,
+    url, bio_info
+  }) {
+    const safeUrl     = url     && url.trim()     ? url.trim()     : DEFAULT_URL;
+    const safeBioInfo = bio_info && bio_info.trim() ? bio_info.trim() : DEFAULT_BIO;
+  
+    await client.query('BEGIN');
+    try {
+      // 1) victims
+      await client.query(`
+        INSERT INTO public.victims(
+          victim_id, first_name, last_name, age, gender, bio_info
+        ) VALUES($1,$2,$3,$4,$5,$6)
+        ON CONFLICT(victim_id) DO UPDATE
+          SET first_name=EXCLUDED.first_name,
+              last_name =EXCLUDED.last_name,
+              age       =EXCLUDED.age,
+              gender    =EXCLUDED.gender,
+              bio_info  =EXCLUDED.bio_info;
+      `, [ id, first_name, last_name, age, gender, safeBioInfo ]);
 
-    // 2) incidents
     const incRes = await client.query(`
       INSERT INTO public.incidents(incident_date, city, state, latitude, longitude)
       VALUES($1,$2,$3,$4,$5)
@@ -76,25 +70,16 @@ async function upsertPoint({
       incident_id = lookup.rows[0].incident_id;
     }
 
-    // 3) media_references
     const mediaRes = await client.query(`
-      INSERT INTO public.media_references(url)
-      VALUES($1)
-      ON CONFLICT(url) DO NOTHING
-      RETURNING media_id;
-    `, [url]);
+    INSERT INTO public.media_references(url)
+    VALUES($1)
+    ON CONFLICT (url)
+      DO UPDATE SET url = EXCLUDED.url
+    RETURNING media_id;
+  `, [ safeUrl ]);
+  
+  const media_id = mediaRes.rows[0].media_id;
 
-    let media_id;
-    if (mediaRes.rows[0]) {
-      media_id = mediaRes.rows[0].media_id;
-    } else {
-      const lookup = await client.query(`
-        SELECT media_id FROM public.media_references WHERE url=$1
-      `, [url]);
-      media_id = lookup.rows[0].media_id;
-    }
-
-    // 4) incident_victims
     await client.query(`
       INSERT INTO public.incident_victims(victim_id, incident_id, media_id)
       VALUES($1,$2,$3)
@@ -108,7 +93,6 @@ async function upsertPoint({
   }
 }
 
-// GET all points
 app.get('/api/data', async (req, res) => {
   try {
     const result = await client.query(`
@@ -123,8 +107,18 @@ app.get('/api/data', async (req, res) => {
         v.last_name,
         v.age,
         v.gender,
-        v.bio_info,
-        m.url
+        -- if bio_info is empty string, substitute your default
+        CASE WHEN v.bio_info = '' THEN
+          '${DEFAULT_BIO.replace(/'/g,"''")}'
+        ELSE
+          v.bio_info
+        END AS bio_info,
+        -- same for url
+        CASE WHEN m.url = '' THEN
+          '${DEFAULT_URL}'
+        ELSE
+          m.url
+        END AS url
       FROM public.incident_victims iv
       JOIN public.victims v
         ON iv.victim_id = v.victim_id
@@ -141,7 +135,6 @@ app.get('/api/data', async (req, res) => {
   }
 });
 
-// DELETE a point by victim_id
 app.delete('/api/points/:id', async (req, res) => {
   const vid = parseInt(req.params.id, 10);
 
@@ -205,18 +198,23 @@ app.delete('/api/points/:id', async (req, res) => {
 });
 
 
-// POST a single point
 app.post('/api/points', async (req, res) => {
   try {
-    await upsertPoint(req.body);
-    res.sendStatus(201);
-  } catch (err) {
-    console.error('Error upserting point:', err.message);
-    res.status(500).json({ error: err.message });
+    let { id, ...rest } = req.body;
+    if (!id) {
+    const { rows } = await client.query(
+      `SELECT COALESCE(MAX(victim_id), 0) AS max_id FROM public.victims`
+      );
+    id = rows[0].max_id + 1;
   }
-});
+  await upsertPoint({ id, ...rest });
+    res.status(201).json({ id });
+  } catch (err) {
+    console.error('Error upserting point:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+})
 
-// POST bulk CSV upload
 app.post('/api/points/bulk',
   upload.single('file'),
   (req, res) => {

@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import {
   Box,
+  TableContainer,
   Typography,
   Button,
+  IconButton,
   Table,
   TableBody,
   TableCell,
@@ -16,6 +18,7 @@ import {
   DialogContentText,
   DialogActions
 } from '@mui/material';
+import { Edit, Save, Cancel, Delete } from '@mui/icons-material';
 import axios from 'axios';
 
 export default function ManagePoints() {
@@ -24,17 +27,17 @@ export default function ManagePoints() {
   const [searchTerm, setSearchTerm] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [editingId, setEditingId]   = useState(null);
+  const [draftRow, setDraftRow]     = useState({});
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const res = await axios.get('http://localhost:3001/api/data');
-      const sorted = res.data.sort((a, b) => {
-        const da = new Date(a.incident_date);
-        const db = new Date(b.incident_date);
-        return db - da;
-      });
-
+      // sort descending by date
+      const sorted = res.data.sort((a, b) =>
+        new Date(b.incident_date) - new Date(a.incident_date)
+      );
       setData(sorted);
     } catch (error) {
       console.error('Error fetching points:', error);
@@ -42,19 +45,21 @@ export default function ManagePoints() {
       setLoading(false);
     }
   };
-  useEffect(() => { fetchData(); }, []);
 
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // Delete flow
   const confirmDelete = (id) => {
     setPendingDeleteId(id);
     setDialogOpen(true);
   };
-
   const handleDelete = async () => {
-    const id = pendingDeleteId;
     setDialogOpen(false);
-    if (id == null) return;
+    if (pendingDeleteId == null) return;
     try {
-      await axios.delete(`http://localhost:3001/api/points/${id}`);
+      await axios.delete(`http://localhost:3001/api/points/${pendingDeleteId}`);
       fetchData();
     } catch (error) {
       console.error('Error deleting point:', error);
@@ -62,12 +67,35 @@ export default function ManagePoints() {
       setPendingDeleteId(null);
     }
   };
-
-  const handleCancel = () => {
+  const handleCancelDelete = () => {
     setDialogOpen(false);
     setPendingDeleteId(null);
   };
 
+  // Edit flow
+  const startEdit = (row) => {
+    setEditingId(row.id);
+    setDraftRow({ ...row });
+  };
+  const cancelEdit = () => {
+    setEditingId(null);
+    setDraftRow({});
+  };
+  const saveEdit = async () => {
+    try {
+      await axios.put(
+        `http://localhost:3001/api/points/${editingId}`,
+        draftRow
+      );
+      setEditingId(null);
+      setDraftRow({});
+      fetchData();
+    } catch (error) {
+      console.error('Error updating point:', error);
+    }
+  };
+
+  // filtered view
   const filtered = data.filter(row => {
     const term = searchTerm.toLowerCase();
     return (
@@ -76,7 +104,9 @@ export default function ManagePoints() {
       row.last_name.toLowerCase().includes(term) ||
       row.city.toLowerCase().includes(term) ||
       row.state.toLowerCase().includes(term) ||
-      row.incident_date.includes(term)   
+      row.incident_date.includes(term) ||
+      (row.url || '').toLowerCase().includes(term) ||
+      (row.bio_info || '').toLowerCase().includes(term)
     );
   });
 
@@ -95,7 +125,7 @@ export default function ManagePoints() {
 
   return (
     <Box p={2}>
-      {/* header */}
+      {/* Header + Search */}
       <Box
         display="flex"
         alignItems="center"
@@ -106,51 +136,86 @@ export default function ManagePoints() {
         <TextField
           size="small"
           variant="outlined"
-          placeholder="Search..."
+          placeholder="Search…"
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={e => setSearchTerm(e.target.value)}
         />
       </Box>
-      <Table>
-        <TableHead>
-          <TableRow>
-            {['ID', 'First', 'Last', 'Date', 'City', 'State', 'Actions'].map(h => (
-              <TableCell key={h}>{h}</TableCell>
-            ))}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {filtered.map(row => (
-            <TableRow key={row.id}>
-              <TableCell>{row.id}</TableCell>
-              <TableCell>{row.first_name}</TableCell>
-              <TableCell>{row.last_name}</TableCell>
-              <TableCell>{row.incident_date}</TableCell>
-              <TableCell>{row.city}</TableCell>
-              <TableCell>{row.state}</TableCell>
-              <TableCell>
-                <Button
-                  size="small"
-                  color="error"
-                  onClick={() => confirmDelete(row.id)}
-                >
-                  Delete
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-          {filtered.length === 0 && (
+  
+      {/* ← scrollable wrapper starts here */}
+      <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+        <Table sx={{ minWidth: 650 }}>
+          <TableHead>
             <TableRow>
-              <TableCell colSpan={7} align="center">
-                No matching records
-              </TableCell>
+              {['ID','First','Last','Date','City','State','Latitude','Longitude','URL','Bio','Actions'].map(h => (
+                <TableCell key={h}>{h}</TableCell>
+              ))}
             </TableRow>
-          )}
-        </TableBody>
-      </Table>
+          </TableHead>
+  
+          <TableBody>
+            {filtered.map(row => {
+              const isEditing = editingId === row.id;
+              return (
+                <TableRow key={row.id}>
+                  <TableCell>{row.id}</TableCell>
+                  {['first_name','last_name','incident_date','city','state','latitude','longitude','url','bio_info']
+                    .map(field => (
+                    <TableCell key={field}>
+                      {isEditing
+                        ? <TextField
+                            size="small"
+                            fullWidth
+                            name={field}
+                            value={draftRow[field] || ''}
+                            onChange={e =>
+                              setDraftRow(dr => ({
+                                ...dr,
+                                [field]: e.target.value
+                              }))
+                            }
+                          />
+                        : String(row[field] || '')
+                      }
+                    </TableCell>
+                  ))}
+                  <TableCell>
+                    {isEditing
+                      ? <>
+                          <IconButton size="small" onClick={saveEdit}><Save/></IconButton>
+                          <IconButton size="small" onClick={cancelEdit}><Cancel/></IconButton>
+                        </>
+                      : <>
+                          <IconButton size="small" onClick={() => startEdit(row)}><Edit/></IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => confirmDelete(row.id)}
+                          >
+                            <Delete/>
+                          </IconButton>
+                        </>
+                    }
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+  
+            {filtered.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={9} align="center">
+                  No matching records
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* Confirm Delete Dialog */}
       <Dialog
         open={dialogOpen}
-        onClose={handleCancel}
+        onClose={handleCancelDelete}
       >
         <DialogTitle>Confirm Deletion</DialogTitle>
         <DialogContent>
@@ -160,10 +225,8 @@ export default function ManagePoints() {
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCancel}>Cancel</Button>
-          <Button color="error" onClick={handleDelete}>
-            Confirm
-          </Button>
+          <Button onClick={handleCancelDelete}>Cancel</Button>
+          <Button color="error" onClick={handleDelete}>Confirm</Button>
         </DialogActions>
       </Dialog>
     </Box>

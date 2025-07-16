@@ -256,6 +256,75 @@ app.post('/api/points/bulk',
   }
 );
 
+app.put('/api/points/:id', async (req, res) => {
+  const vid = parseInt(req.params.id, 10)
+  const {
+    first_name, last_name, age, gender,
+    incident_date, city, state,
+    latitude, longitude,
+    url = DEFAULT_URL,
+    bio_info = DEFAULT_BIO
+  } = req.body
+
+  try {
+    await client.query('BEGIN')
+
+    // 1) update victims
+    await client.query(`
+      UPDATE public.victims
+         SET first_name = $2,
+             last_name  = $3,
+             age        = $4,
+             gender     = $5,
+             bio_info   = $6
+       WHERE victim_id = $1
+    `, [vid, first_name, last_name, age, gender, bio_info])
+
+    // 2) pull the incident_id so we can update its lat/long/etc
+    const { rows:[iv] } = await client.query(`
+      SELECT incident_id
+        FROM public.incident_victims
+       WHERE victim_id = $1
+    `, [vid])
+    const incident_id = iv.incident_id
+
+    // 3) update that incident row
+    await client.query(`
+      UPDATE public.incidents
+         SET incident_date = $2,
+             city          = $3,
+             state         = $4,
+             latitude      = $5,
+             longitude     = $6
+       WHERE incident_id = $1
+    `, [incident_id, incident_date, city, state, latitude, longitude])
+
+    // 4) upsert media_reference
+    const mediaRes = await client.query(`
+      INSERT INTO public.media_references(url)
+      VALUES($1)
+      ON CONFLICT (url) DO UPDATE SET url = EXCLUDED.url
+      RETURNING media_id
+    `, [url])
+    const media_id = mediaRes.rows[0].media_id
+
+    // 5) link the new media_id
+    await client.query(`
+      UPDATE public.incident_victims
+         SET media_id = $2
+       WHERE victim_id = $1
+    `, [vid, media_id])
+
+    await client.query('COMMIT')
+    res.sendStatus(204)
+
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error('Error updating point:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
 });

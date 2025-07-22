@@ -339,7 +339,6 @@ app.put('/api/points/:id', async (req, res) => {
   try {
     await client.query('BEGIN')
 
-    // 1) update victims
     await client.query(`
       UPDATE public.victims
          SET first_name = $2,
@@ -350,7 +349,6 @@ app.put('/api/points/:id', async (req, res) => {
        WHERE victim_id = $1
     `, [vid, first_name, last_name, age, gender, bio_info])
 
-    // 2) pull the incident_id so we can update its lat/long/etc
     const { rows:[iv] } = await client.query(`
       SELECT incident_id
         FROM public.incident_victims
@@ -358,7 +356,6 @@ app.put('/api/points/:id', async (req, res) => {
     `, [vid])
     const incident_id = iv.incident_id
 
-    // 3) update that incident row
     await client.query(`
       UPDATE public.incidents
          SET incident_date = $2,
@@ -369,7 +366,6 @@ app.put('/api/points/:id', async (req, res) => {
        WHERE incident_id = $1
     `, [incident_id, incident_date, city, state, latitude, longitude])
 
-    // 4) upsert media_reference
     const mediaRes = await client.query(`
       INSERT INTO public.media_references(url)
       VALUES($1)
@@ -378,7 +374,6 @@ app.put('/api/points/:id', async (req, res) => {
     `, [url])
     const media_id = mediaRes.rows[0].media_id
 
-    // 5) link the new media_id
     await client.query(`
       UPDATE public.incident_victims
          SET media_id = $2

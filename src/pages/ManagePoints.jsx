@@ -34,7 +34,6 @@ export default function ManagePoints() {
     setLoading(true);
     try {
       const res = await axios.get('http://localhost:3001/api/data');
-      // sort descending by date
       const sorted = res.data.sort((a, b) =>
         new Date(b.incident_date) - new Date(a.incident_date)
       );
@@ -50,7 +49,6 @@ export default function ManagePoints() {
     fetchData();
   }, []);
 
-  // Delete flow
   const confirmDelete = (id) => {
     setPendingDeleteId(id);
     setDialogOpen(true);
@@ -72,7 +70,6 @@ export default function ManagePoints() {
     setPendingDeleteId(null);
   };
 
-  // Edit flow
   const startEdit = (row) => {
     setEditingId(row.id);
     setDraftRow({ ...row });
@@ -95,7 +92,6 @@ export default function ManagePoints() {
     }
   };
 
-  // filtered view
   const filtered = data.filter(row => {
     const term = searchTerm.toLowerCase();
     return (
@@ -125,7 +121,6 @@ export default function ManagePoints() {
 
   return (
     <Box p={2}>
-      {/* Header + Search */}
       <Box
         display="flex"
         alignItems="center"
@@ -142,7 +137,6 @@ export default function ManagePoints() {
         />
       </Box>
   
-      {/* ← scrollable wrapper starts here */}
       <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
         <Table sx={{ minWidth: 650 }}>
           <TableHead>
@@ -212,7 +206,6 @@ export default function ManagePoints() {
         </Table>
       </TableContainer>
 
-      {/* Confirm Delete Dialog */}
       <Dialog
         open={dialogOpen}
         onClose={handleCancelDelete}

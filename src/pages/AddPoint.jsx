@@ -106,7 +106,7 @@ export default function AddPoint() {
           const isDisabled =
             (key === 'latitude' || key === 'longitude') &&
             Boolean(form.street_address);
-          const label = meta.label + (isRequired ? ' *' : ' (optional)');
+          const label = meta.label + (isRequired ? '' : ' (optional)');
   
           return (
             <Grid item xs={12} sm={6} key={key}>

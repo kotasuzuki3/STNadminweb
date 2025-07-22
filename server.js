@@ -4,7 +4,35 @@ import bodyParser from 'body-parser';
 import multer from 'multer';
 import { parse } from 'csv-parse';
 import pkg from 'pg';
+import fetch from 'node-fetch';
+import 'dotenv/config';
+
 const { Client } = pkg;
+
+const GEOCODER = {
+  async lookup(address, city, state) {
+    const q = encodeURIComponent([address, city, state].filter(Boolean).join(', '));
+    const url = `https://us1.locationiq.com/v1/search.php`
+            + `?key=${process.env.LOCATIONIQ_KEY}`
+            + `&q=${q}`
+            + `&format=json&limit=1`;
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`LocationIQ HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new Error('Geocoding failed: no results');
+    }
+
+    return {
+      latitude:  parseFloat(data[0].lat),
+      longitude: parseFloat(data[0].lon)
+    };
+  }
+};
 
 const upload = multer();
 const app = express();
@@ -31,15 +59,32 @@ client.connect()
   
   async function upsertPoint({
     id, first_name, last_name, age, gender,
-    incident_date, city, state, latitude, longitude,
+    incident_date, city, state, 
+    street_address, latitude, longitude,
     url, bio_info
   }) {
     const safeUrl     = url     && url.trim()     ? url.trim()     : DEFAULT_URL;
     const safeBioInfo = bio_info && bio_info.trim() ? bio_info.trim() : DEFAULT_BIO;
-  
+
+    if (!city || !state) {
+      throw new Error('city and state are required');
+    }
+    if ((latitude == null || longitude == null) && !street_address) {
+      throw new Error('Either lat/long or street_address must be provided');
+    }
+    if (( !latitude || !longitude ) && street_address) {
+      const coords = await GEOCODER.lookup(street_address, city, state);
+      latitude  = coords.latitude.toString();
+      longitude = coords.longitude.toString();
+    }
+    const safeLat = parseFloat(latitude);
+    const safeLon = parseFloat(longitude);
+
+    if (Number.isNaN(safeLat) || Number.isNaN(safeLon)) {
+      throw new Error('Could not determine latitude/longitude');
+    }
     await client.query('BEGIN');
     try {
-      // 1) victims
       await client.query(`
         INSERT INTO public.victims(
           victim_id, first_name, last_name, age, gender, bio_info
@@ -52,12 +97,26 @@ client.connect()
               bio_info  =EXCLUDED.bio_info;
       `, [ id, first_name, last_name, age, gender, safeBioInfo ]);
 
-    const incRes = await client.query(`
-      INSERT INTO public.incidents(incident_date, city, state, latitude, longitude)
-      VALUES($1,$2,$3,$4,$5)
-      ON CONFLICT (incident_date, city, state, latitude, longitude) DO NOTHING
-      RETURNING incident_id;
-    `, [incident_date, city, state, latitude, longitude]);
+      const incRes = await client.query(`
+         INSERT INTO public.incidents(
+           incident_date,
+           city,
+           state,
+           latitude,
+           longitude,
+           street_address
+         )
+         VALUES($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (incident_date, city, state, latitude, longitude, street_address) DO NOTHING
+         RETURNING incident_id;
+       `, [
+         incident_date,
+         city,
+         state,
+         safeLat,         
+         safeLon,        
+         street_address  
+       ]);
 
     let incident_id;
     if (incRes.rows[0]) {
@@ -65,8 +124,8 @@ client.connect()
     } else {
       const lookup = await client.query(`
         SELECT incident_id FROM public.incidents
-         WHERE incident_date=$1 AND city=$2 AND state=$3 AND latitude=$4 AND longitude=$5
-      `, [incident_date, city, state, latitude, longitude]);
+         WHERE incident_date=$1 AND city=$2 AND state=$3 AND latitude=$4 AND longitude=$5 AND street_address= $6
+      `, [incident_date, city, state, safeLat, safeLon, street_address]);
       incident_id = lookup.rows[0].incident_id;
     }
 
@@ -221,40 +280,51 @@ app.post('/api/points/bulk',
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
-    parse(req.file.buffer.toString(), { columns: true, skip_empty_lines: true }, 
+
+    parse(req.file.buffer.toString(), { columns: true, skip_empty_lines: true },
       async (err, records) => {
         if (err) {
           console.error('CSV parse error:', err);
           return res.status(400).json({ error: 'Invalid CSV format' });
         }
+
         try {
+          const { rows } = await client.query(
+            `SELECT COALESCE(MAX(victim_id), 0) AS max_id FROM public.victims`
+          );
+          let nextId = rows[0].max_id + 1;
+
           for (const row of records) {
+            const maybe = parseInt(row.id, 10);
+            const id = Number.isInteger(maybe) ? maybe : nextId++;
+
             await upsertPoint({
-              id            : parseInt(row.id, 10),
+              id,
               first_name    : row.first_name,
               last_name     : row.last_name,
               age           : row.age ? parseInt(row.age, 10) : null,
               gender        : row.gender,
               incident_date : row.incident_date,
+              street_address: row.street_address,
               city          : row.city,
               state         : row.state,
-              latitude      : parseFloat(row.latitude),
-              longitude     : parseFloat(row.longitude),
-              url           : row.url || 'https://saytheirnames.shinyapps.io/STNWebApp/_w_4d2adf62/0000.jpg',
-              bio_info      : row.bio_info ||
-                              'Biographical information is not available at this time. ' +
-                              'Please contact STN@nonopera.org if you have information you would like to share.'
+              latitude      : row.latitude,   
+              longitude     : row.longitude,
+              url           : row.url,
+              bio_info      : row.bio_info
             });
           }
-          res.json({ inserted: records.length });
+
+          return res.json({ inserted: records.length });
         } catch (e) {
           console.error('Error processing bulk upload:', e);
-          res.status(500).json({ error: 'Internal server error' });
+          return res.status(500).json({ error: e.message });
         }
       }
     );
   }
 );
+
 
 app.put('/api/points/:id', async (req, res) => {
   const vid = parseInt(req.params.id, 10)

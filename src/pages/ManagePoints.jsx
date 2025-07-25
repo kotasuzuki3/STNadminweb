@@ -159,6 +159,9 @@ export default function ManagePoints() {
                       {isEditing
                         ? <TextField
                             size="small"
+                            sx={{
+                              '& .MuiInputBase-root': { minWidth: 120 }
+                            }}
                             fullWidth
                             name={field}
                             value={draftRow[field] || ''}

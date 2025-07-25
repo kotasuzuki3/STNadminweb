@@ -11,30 +11,47 @@ export default function BulkUpload() {
     const form = new FormData();
     form.append('file', file);
     try {
-      await axios.post(`${import.meta.env.VITE_API_BASE_URL}/bulk`, form, {
+      await axios.post('/api/points/bulk', form, {
         headers: { 'Content-Type':'multipart/form-data' }
       });
       setMsg('Uploaded successfully!');
     } catch (e) {
-      setMsg('Upload failed: ' + e.message);
+      setMsg('Upload failed: ' + (e.response?.data?.error || e.message));
     }
   };
 
   return (
-    <Box>
-      <Typography variant="h5">Bulk Upload</Typography>
+    <Box p={2}>
+      <Typography variant="h5" gutterBottom>
+        Bulk Upload
+      </Typography>
+
+      <Button
+        variant="outlined"
+        component="a"
+        href="/template.csv"      
+        download="stn_masterdata_template.csv"
+        sx={{ mb: 2 }}
+      >
+        Download CSV Template
+      </Button>
+
       <input
         type="file"
         accept=".csv"
         onChange={e => setFile(e.target.files[0])}
-        style={{ marginTop:16 }}
+        style={{ display: 'block', marginBottom: 16 }}
       />
-      <Box mt={2}>
-        <Button variant="contained" onClick={handleSubmit}>
-          Upload CSV
-        </Button>
-      </Box>
-      {msg && <Typography mt={2}>{msg}</Typography>}
+
+      <Button variant="contained" onClick={handleSubmit}>
+        Upload CSV
+      </Button>
+
+      {msg && (
+        <Typography mt={2} color={msg.startsWith('Upload failed') ? 'error' : 'primary'}>
+          {msg}
+        </Typography>
+      )}
     </Box>
   );
 }

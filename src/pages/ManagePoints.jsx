@@ -138,76 +138,113 @@ export default function ManagePoints() {
       </Box>
   
       <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
-        <Table sx={{ minWidth: 650 }}>
-          <TableHead>
-            <TableRow>
-              {['ID','First','Last','Date','City','State','Latitude','Longitude','URL','Bio','Actions'].map(h => (
-                <TableCell key={h}>{h}</TableCell>
-              ))}
-            </TableRow>
-          </TableHead>
-  
-          <TableBody>
-            {filtered.map(row => {
-              const isEditing = editingId === row.id;
-              return (
-                <TableRow key={row.id}>
-                  <TableCell>{row.id}</TableCell>
-                  {['first_name','last_name','incident_date','city','state','latitude','longitude','url','bio_info']
-                    .map(field => (
-                    <TableCell key={field}>
-                      {isEditing
-                        ? <TextField
-                            size="small"
-                            sx={{
-                              '& .MuiInputBase-root': { minWidth: 120 }
-                            }}
-                            fullWidth
-                            name={field}
-                            value={draftRow[field] || ''}
-                            onChange={e =>
-                              setDraftRow(dr => ({
-                                ...dr,
-                                [field]: e.target.value
-                              }))
-                            }
-                          />
-                        : String(row[field] || '')
-                      }
-                    </TableCell>
-                  ))}
-                  <TableCell>
-                    {isEditing
-                      ? <>
-                          <IconButton size="small" onClick={saveEdit}><Save/></IconButton>
-                          <IconButton size="small" onClick={cancelEdit}><Cancel/></IconButton>
-                        </>
-                      : <>
-                          <IconButton size="small" onClick={() => startEdit(row)}><Edit/></IconButton>
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => confirmDelete(row.id)}
-                          >
-                            <Delete/>
-                          </IconButton>
-                        </>
+  <Table sx={{ minWidth: 1000 }}>
+    <TableHead>
+      <TableRow>
+        {[
+          'ID','First','Last','Date','City','State',
+          'Latitude','Longitude','URL','Bio','Actions'
+        ].map((h) => (
+          <TableCell
+            key={h}
+            sx={
+              h === 'Actions'
+                ? {
+                    position: 'sticky',
+                    right: 0,
+                    backgroundColor: 'background.paper',
+                    zIndex: 2,
+                    minWidth: 100
+                  }
+                : undefined
+            }
+          >
+            {h}
+          </TableCell>
+        ))}
+      </TableRow>
+    </TableHead>
+
+    <TableBody>
+      {filtered.map((row) => {
+        const isEditing = editingId === row.id;
+        return (
+          <TableRow key={row.id}>
+            <TableCell>{row.id}</TableCell>
+            {[
+              'first_name','last_name','incident_date',
+              'city','state','latitude','longitude',
+              'url','bio_info'
+            ].map((field) => (
+              <TableCell key={field}>
+                {isEditing ? (
+                  <TextField
+                    size="small"
+                    fullWidth
+                    name={field}
+                    value={draftRow[field] || ''}
+                    onChange={(e) =>
+                      setDraftRow((dr) => ({
+                        ...dr,
+                        [field]: e.target.value
+                      }))
                     }
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-  
-            {filtered.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={9} align="center">
-                  No matching records
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+                  />
+                ) : (
+                  String(row[field] ?? '')
+                )}
+              </TableCell>
+            ))}
+
+            {/* sticky Actions cell */}
+            <TableCell
+              sx={{
+                position: 'sticky',
+                right: 0,
+                backgroundColor: 'background.paper',
+                zIndex: 1,
+                minWidth: 100
+              }}
+            >
+              {isEditing ? (
+                <>
+                  <IconButton size="small" onClick={saveEdit}>
+                    <Save />
+                  </IconButton>
+                  <IconButton size="small" onClick={cancelEdit}>
+                    <Cancel />
+                  </IconButton>
+                </>
+              ) : (
+                <>
+                  <IconButton size="small" onClick={() => startEdit(row)}>
+                    <Edit />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => confirmDelete(row.id)}
+                  >
+                    <Delete />
+                  </IconButton>
+                </>
+              )}
+            </TableCell>
+          </TableRow>
+        );
+      })}
+
+      {filtered.length === 0 && (
+        <TableRow>
+          <TableCell colSpan={11} align="center">
+            No matching records
+          </TableCell>
+        </TableRow>
+      )}
+    </TableBody>
+  </Table>
+</TableContainer>
+
 
       <Dialog
         open={dialogOpen}

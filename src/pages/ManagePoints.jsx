@@ -170,7 +170,9 @@ export default function ManagePoints() {
         const isEditing = editingId === row.id;
         return (
           <TableRow key={row.id}>
-            <TableCell>{row.id}</TableCell>
+            <TableCell>
+              {String(row.id).padStart(6, '0')}
+            </TableCell>
             {[
               'first_name','last_name','incident_date',
               'city','state','latitude','longitude',

@@ -9,7 +9,6 @@ import {
 import axios from 'axios';
 
 const fieldMeta = {
-  id:            { label: 'ID',            required: false },
   first_name:    { label: 'First Name',    required: true  },
   last_name:     { label: 'Last Name',     required: true  },
   age:           { label: 'Age',           required: true  },
@@ -33,7 +32,6 @@ const fieldMeta = {
 
 export default function AddPoint() {
   const [form, setForm] = useState({
-    id:          '',
     first_name:  '',
     last_name:   '',
     age:         '',
@@ -66,7 +64,6 @@ export default function AddPoint() {
       await axios.post('http://localhost:3001/api/points', form);
       setMsg('Point added!');
       setForm({
-        id:           '',
         first_name:  '',
         last_name:   '',
         age:         '',
@@ -92,7 +89,7 @@ export default function AddPoint() {
   return (
     <Box p={2}>
       <Typography variant="h5" gutterBottom>
-        Add Single Point
+        Add a Single Name
       </Typography>
   
       <Grid container spacing={2}>
@@ -127,7 +124,7 @@ export default function AddPoint() {
   
       <Box mt={2}>
         <Button variant="contained" onClick={handleSubmit}>
-          Submit
+          Add
         </Button>
       </Box>
   

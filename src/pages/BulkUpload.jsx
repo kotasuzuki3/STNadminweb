@@ -23,18 +23,8 @@ export default function BulkUpload() {
   return (
     <Box p={2}>
       <Typography variant="h5" gutterBottom>
-        Bulk Upload
+        Add New Data
       </Typography>
-
-      <Button
-        variant="outlined"
-        component="a"
-        href="/template.csv"      
-        download="stn_masterdata_template.csv"
-        sx={{ mb: 2 }}
-      >
-        Download CSV Template
-      </Button>
 
       <input
         type="file"
